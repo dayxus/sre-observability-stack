@@ -4,7 +4,7 @@ Pinned in [`versions.env`](../versions.env) — the single source of truth for e
 stack runs. This table is regenerated weekly by `.github/workflows/maintenance.yml`, which
 queries the upstream release APIs; it is not edited by hand.
 
-_Last checked: 2026-09-16 00:53 UTC_
+_Last checked: 2026-09-16 01:23 UTC_
 
 | Component | Pinned | Latest stable upstream | Status | Image | Changelog |
 | --- | --- | --- | --- | --- | --- |
