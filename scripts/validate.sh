@@ -50,14 +50,16 @@ fetch_prometheus_binary() {
     return 0
   fi
   local archive="prometheus-${bare}.${PLATFORM}.tar.gz"
+  local unpacked="prometheus-${bare}.${PLATFORM}"
   echo "  downloading prometheus ${version} (${PLATFORM})" >&2
   curl -fsSL -o "${TOOLS_DIR}/${archive}" \
     "https://github.com/prometheus/prometheus/releases/download/${version}/${archive}"
-  tar -xzf "${TOOLS_DIR}/${archive}" -C "${TOOLS_DIR}" \
-    "prometheus-${bare}.${PLATFORM}/${tool}"
-  mv "${TOOLS_DIR}/${tool}" "${path}"
+  # The release archive unpacks into a per-platform directory, so the binary is taken from
+  # inside it and the directory is discarded.
+  tar -xzf "${TOOLS_DIR}/${archive}" -C "${TOOLS_DIR}" "${unpacked}/${tool}"
+  mv "${TOOLS_DIR}/${unpacked}/${tool}" "${path}"
   chmod +x "${path}"
-  rm -f "${TOOLS_DIR}/${archive}"
+  rm -rf "${TOOLS_DIR}/${unpacked}" "${TOOLS_DIR}/${archive}"
   printf '%s\n' "${path}"
 }
 
@@ -69,14 +71,15 @@ fetch_alertmanager_binary() {
     return 0
   fi
   local archive="alertmanager-${bare}.${PLATFORM}.tar.gz"
+  local unpacked="alertmanager-${bare}.${PLATFORM}"
   echo "  downloading alertmanager ${version} (${PLATFORM})" >&2
   curl -fsSL -o "${TOOLS_DIR}/${archive}" \
     "https://github.com/prometheus/alertmanager/releases/download/${version}/${archive}"
-  tar -xzf "${TOOLS_DIR}/${archive}" -C "${TOOLS_DIR}" \
-    "alertmanager-${bare}.${PLATFORM}/${tool}"
-  mv "${TOOLS_DIR}/${tool}" "${path}"
+  # Same layout as the prometheus archive: a per-platform directory inside.
+  tar -xzf "${TOOLS_DIR}/${archive}" -C "${TOOLS_DIR}" "${unpacked}/${tool}"
+  mv "${TOOLS_DIR}/${unpacked}/${tool}" "${path}"
   chmod +x "${path}"
-  rm -f "${TOOLS_DIR}/${archive}"
+  rm -rf "${TOOLS_DIR}/${unpacked}" "${TOOLS_DIR}/${archive}"
   printf '%s\n' "${path}"
 }
 
