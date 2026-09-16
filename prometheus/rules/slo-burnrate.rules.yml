@@ -1,0 +1,120 @@
+# Multi-window, multi-burn-rate alerts.
+#
+# The router is Google's SRE Workbook recipe: a short window catches the incident, a long
+# window confirms it is not a blip, and the pair decides the severity. A single threshold
+# on a short window pages for noise; a single threshold on a long window pages too late.
+#
+#   burn rate | short | long | budget burned | severity | time to detect
+#   14.4      | 5m    | 1h   | 2% in 1h      | critical | ~2m
+#   6         | 30m   | 6h   | 5% in 6h      | warning  | ~15m
+#   3         | 2h    | 1d   | 10% in 3d     | warning  | ~1h
+#   1         | 6h    | 3d   | 10% in 30d    | info     | ~3h
+#
+# Objectives, windows and the reasoning behind each number are in docs/slo-alerts.md.
+
+groups:
+  - name: slo-availability-burn-rate
+    interval: 30s
+    rules:
+      - alert: SLOAvailabilityBurnRateFast
+        expr: slo:burn_rate:5m > 14.4 and slo:burn_rate:1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+          window: 1h
+        annotations:
+          summary: "Synthetic availability is burning the 30d error budget 14.4x too fast"
+          description: >-
+            The 5m and 1h burn rates are both above 14.4, which exhausts 2% of the 30 day
+            error budget in one hour if it continues. Objective: 99.5% availability
+            measured by the blackbox http probe on the synthetic target.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/silent-failure.md
+
+      - alert: SLOAvailabilityBurnRateMedium
+        expr: slo:burn_rate:30m > 6 and slo:burn_rate:6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+          window: 6h
+        annotations:
+          summary: "Synthetic availability is burning the 30d error budget 6x too fast"
+          description: >-
+            5% of the 30 day error budget would be consumed in 6 hours at this rate. Worth
+            a ticket during business hours, not a page.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/silent-failure.md
+
+      - alert: SLOAvailabilityBurnRateSlow
+        expr: slo:burn_rate:2h > 3 and slo:burn_rate:1d > 3
+        for: 1h
+        labels:
+          severity: warning
+          slo: availability
+          window: 3d
+        annotations:
+          summary: "Synthetic availability is burning the 30d error budget 3x too fast"
+          description: >-
+            10% of the 30 day error budget would be consumed in 3 days. This is the
+            pattern of a slow leak that never crosses a short-window threshold.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/silent-failure.md
+
+      - alert: SLOAvailabilityBurnRateVerySlow
+        expr: slo:burn_rate:6h > 1 and slo:burn_rate:3d > 1
+        for: 3h
+        labels:
+          severity: info
+          slo: availability
+          window: 30d
+        annotations:
+          summary: "Synthetic availability will not meet the 30d objective at the current rate"
+          description: >-
+            The burn rate has been above 1 for a day and a half: at this pace the budget
+            is gone before the 30 day window closes. Track it in the next planning cycle.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/README.md
+
+      - alert: SLOAvailabilityBudgetExhausted
+        expr: slo:availability:budget_remaining_ratio <= 0
+        for: 10m
+        labels:
+          severity: critical
+          slo: availability
+          window: 30d
+        annotations:
+          summary: "The 30d availability error budget is exhausted"
+          description: >-
+            Remaining budget has been at or below zero for ten minutes. Freeze risky
+            changes on the service until the budget recovers.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/alert-fatigue.md
+
+  - name: slo-latency-burn-rate
+    interval: 30s
+    rules:
+      - alert: SLOLatencyBurnRateFast
+        expr: slo:latency:burn_rate:5m > 14.4 and slo:latency:burn_rate:1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          slo: latency
+          window: 1h
+        annotations:
+          summary: "Latency is burning the 30d error budget 14.4x too fast"
+          description: >-
+            Both the 5m and 1h share of requests served under 300 ms are far below the
+            99.0% objective. The /api/error fault-injection endpoint is excluded from
+            this SLI on purpose.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/silent-failure.md
+
+      - alert: SLOLatencyBurnRateSlow
+        expr: slo:latency:burn_rate:2h > 3 and slo:latency:burn_rate:1d > 3
+        for: 1h
+        labels:
+          severity: warning
+          slo: latency
+          window: 3d
+        annotations:
+          summary: "Latency is burning the 30d error budget 3x too fast"
+          description: >-
+            Requests under 300 ms are below the 99.0% objective on the 2h and 1d windows:
+            a sustained latency regression rather than a spike.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/README.md

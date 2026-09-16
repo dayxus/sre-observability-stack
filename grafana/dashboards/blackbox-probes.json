@@ -1,0 +1,255 @@
+{
+  "title": "Blackbox probes — path, transport and TLS",
+  "uid": "sre-blackbox-probes",
+  "description": "What the probes see from the outside: reachability over HTTP, TCP and ICMP, probe latency, HTTP status codes and the remaining lifetime of the TLS certificate chain.",
+  "tags": ["sre", "blackbox", "probes", "tls", "lab"],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "blackbox_job",
+        "label": "Probe job",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "query": {"query": "label_values(probe_success, job)", "refId": "prometheus"},
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Probes up",
+      "description": "Number of probe jobs currently reporting success out of the total configured.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 4}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(probe_success{job=~\"$blackbox_job\"})",
+          "legendFormat": "up",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Probes configured",
+      "description": "How many probe series Prometheus is evaluating, so a silently dropped job is visible.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(probe_success{job=~\"$blackbox_job\"})",
+          "legendFormat": "configured",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Certificate expires in (days)",
+      "description": "Days until the earliest TLS certificate in the probed chain expires. Warn below 7 days, page below 2.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 7},
+              {"color": "green", "value": 30}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox-ssl\"} - time()) / 86400",
+          "legendFormat": "days left",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Probe success by job",
+      "description": "One series per probe job: 1 when the probe succeeds, 0 the moment it does not. This is the raw input of the availability SLO.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
+          "custom": {"lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "stepAfter": true},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_success{job=~\"$blackbox_job\"}",
+          "legendFormat": "{{job}}",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP phase breakdown",
+      "description": "Where probe time goes: resolution, connect, TLS handshake, processing and transfer.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 4,
+          "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never", "stacking": {"mode": "normal"}}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg by (phase) (probe_http_duration_seconds{job=~\"$blackbox_job\"})",
+          "legendFormat": "{{phase}}",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "HTTP status code returned by the probe",
+      "description": "Status codes the probe received; the http_2xx module only accepts 200, anything else shows up here first.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 17},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {"lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "stepAfter": true},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 200}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_http_status_code{job=~\"$blackbox_job\"}",
+          "legendFormat": "{{job}}",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Exporter scrape health",
+      "description": "Up status of the blackbox exporter endpoints Prometheus scrapes: a failing probe is different from an unreachable exporter.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 17},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
+          "custom": {"lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "stepAfter": true}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=~\"blackbox-.*|blackbox-exporter\"}",
+          "legendFormat": "{{job}}",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Probe results — current state",
+      "description": "Instant view of every probe with its target: the first panel to open when an alert says a probe is failing.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 25},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "decimals": 0, "custom": {"align": "auto"}},
+        "overrides": []
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_success{job=~\"$blackbox_job\"}",
+          "legendFormat": "{{job}} → {{instance}}",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    }
+  ]
+}

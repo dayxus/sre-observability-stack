@@ -1,0 +1,169 @@
+# Recording rules: turn raw probe and application samples into the SLI series that the
+# burn-rate alerts and the SLO dashboard consume.
+#
+# Two SLIs are measured against the synthetic workload:
+#   availability = probe_success of the blackbox http probe on /healthz
+#                  (objective 99.5% over 30 days)
+#   latency      = share of application requests served in under 300 ms
+#                  (objective 99.0% over 30 days)
+#
+# Both objectives live in docs/slo-alerts.md together with the reasoning for the windows.
+
+groups:
+  - name: slo-availability
+    interval: 30s
+    rules:
+      - record: slo:availability:ratio_rate5m
+        expr: avg_over_time(probe_success{job="blackbox-http"}[5m])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate30m
+        expr: avg_over_time(probe_success{job="blackbox-http"}[30m])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate1h
+        expr: avg_over_time(probe_success{job="blackbox-http"}[1h])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate2h
+        expr: avg_over_time(probe_success{job="blackbox-http"}[2h])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate6h
+        expr: avg_over_time(probe_success{job="blackbox-http"}[6h])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate1d
+        expr: avg_over_time(probe_success{job="blackbox-http"}[1d])
+        labels:
+          slo: availability
+      - record: slo:availability:ratio_rate3d
+        expr: avg_over_time(probe_success{job="blackbox-http"}[3d])
+        labels:
+          slo: availability
+      # Objective: 99.5% availability. Remaining budget is 1 until the objective is
+      # breached; a 30 day window means this only becomes meaningful once the lab has
+      # been running for a while (docs/slo-alerts.md says so explicitly).
+      - record: slo:availability:budget_remaining_ratio
+        expr: 1 - ((1 - avg_over_time(probe_success{job="blackbox-http"}[30d])) / (1 - 0.995))
+        labels:
+          slo: availability
+
+  - name: slo-latency
+    interval: 30s
+    rules:
+      # /api/error is fault injection: it is excluded from the SLI on purpose, so the
+      # error panel can show bad responses without burning the error budget.
+      - record: slo:latency:ratio_rate5m
+        expr: |
+          sum(rate(synthetic_http_request_duration_seconds_bucket{path!="/api/error", le="0.3"}[5m]))
+          /
+          sum(rate(synthetic_http_request_duration_seconds_count{path!="/api/error"}[5m]))
+        labels:
+          slo: latency
+      - record: slo:latency:ratio_rate1h
+        expr: |
+          sum(rate(synthetic_http_request_duration_seconds_bucket{path!="/api/error", le="0.3"}[1h]))
+          /
+          sum(rate(synthetic_http_request_duration_seconds_count{path!="/api/error"}[1h]))
+        labels:
+          slo: latency
+      - record: slo:latency:ratio_rate6h
+        expr: |
+          sum(rate(synthetic_http_request_duration_seconds_bucket{path!="/api/error", le="0.3"}[6h]))
+          /
+          sum(rate(synthetic_http_request_duration_seconds_count{path!="/api/error"}[6h]))
+        labels:
+          slo: latency
+      - record: slo:latency:ratio_rate1d
+        expr: |
+          sum(rate(synthetic_http_request_duration_seconds_bucket{path!="/api/error", le="0.3"}[1d]))
+          /
+          sum(rate(synthetic_http_request_duration_seconds_count{path!="/api/error"}[1d]))
+        labels:
+          slo: latency
+      - record: slo:latency:ratio_rate2h
+        expr: |
+          sum(rate(synthetic_http_request_duration_seconds_bucket{path!="/api/error", le="0.3"}[2h]))
+          /
+          sum(rate(synthetic_http_request_duration_seconds_count{path!="/api/error"}[2h]))
+        labels:
+          slo: latency
+      # Objective: 99.0% of requests under 300 ms. The latency burn rate is recorded
+      # under its own names so it never collides with the availability burn rate.
+      - record: slo:latency:burn_rate:5m
+        expr: (1 - slo:latency:ratio_rate5m) / (1 - 0.99)
+        labels:
+          slo: latency
+          window: 5m
+      - record: slo:latency:burn_rate:1h
+        expr: (1 - slo:latency:ratio_rate1h) / (1 - 0.99)
+        labels:
+          slo: latency
+          window: 1h
+      - record: slo:latency:burn_rate:2h
+        expr: (1 - slo:latency:ratio_rate2h) / (1 - 0.99)
+        labels:
+          slo: latency
+          window: 2h
+      - record: slo:latency:burn_rate:1d
+        expr: (1 - slo:latency:ratio_rate1d) / (1 - 0.99)
+        labels:
+          slo: latency
+          window: 1d
+
+  - name: slo-burn-rate
+    interval: 30s
+    rules:
+      # burn rate = how many times faster than the budget allows the objective is being
+      # consumed. 1 means the budget will be exactly exhausted at the end of the window.
+      - record: slo:burn_rate:5m
+        expr: (1 - slo:availability:ratio_rate5m) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 5m
+      - record: slo:burn_rate:30m
+        expr: (1 - slo:availability:ratio_rate30m) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 30m
+      - record: slo:burn_rate:1h
+        expr: (1 - slo:availability:ratio_rate1h) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 1h
+      - record: slo:burn_rate:2h
+        expr: (1 - slo:availability:ratio_rate2h) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 2h
+      - record: slo:burn_rate:6h
+        expr: (1 - slo:availability:ratio_rate6h) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 6h
+      - record: slo:burn_rate:1d
+        expr: (1 - slo:availability:ratio_rate1d) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 1d
+      - record: slo:burn_rate:3d
+        expr: (1 - slo:availability:ratio_rate3d) / (1 - 0.995)
+        labels:
+          slo: availability
+          window: 3d
+
+  - name: golden-signals
+    interval: 30s
+    rules:
+      # Derived series used by the golden-signals dashboard: request rate and error ratio
+      # per path, plus the share of requests inside the latency objective.
+      - record: lab:requests:rate5m
+        expr: sum by (path) (rate(synthetic_http_requests_total[5m]))
+      - record: lab:errors:ratio_rate5m
+        expr: |
+          sum by (path) (rate(synthetic_http_requests_total{code=~"5.."}[5m]))
+          /
+          sum by (path) (rate(synthetic_http_requests_total[5m]))
+      - record: lab:probe:success_rate5m
+        expr: avg by (job) (avg_over_time(probe_success[5m]))

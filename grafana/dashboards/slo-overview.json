@@ -1,0 +1,320 @@
+{
+  "title": "SLO overview — synthetic availability and latency",
+  "uid": "sre-slo-overview",
+  "description": "Error budget, burn rate and SLI ratios for the synthetic target the stack probes. Every number here comes from probe_success and the recording rules in prometheus/rules/recording.rules.yml.",
+  "tags": ["sre", "slo", "error-budget", "lab"],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "blackbox_job",
+        "label": "Probe job",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "query": {"query": "label_values(probe_success, job)", "refId": "prometheus"},
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Error budget remaining (30d)",
+      "description": "How much of the 99.5% availability budget is left over the 30 day objective.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 25},
+              {"color": "green", "value": 75}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "clamp_max(slo:availability:budget_remaining_ratio * 100, 100)",
+          "legendFormat": "budget remaining",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Availability SLI (5m)",
+      "description": "Share of blackbox http probes that succeeded over the last five minutes.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "min": 90,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 99.5}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg_over_time(probe_success{job=\"blackbox-http\"}[5m]) * 100",
+          "legendFormat": "availability",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Burn rate (5m)",
+      "description": "Multiple of the sustainable budget consumption rate. Above 14.4 pages, above 1 spends the budget.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 3},
+              {"color": "red", "value": 14.4}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "slo:burn_rate:5m",
+          "legendFormat": "burn rate",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Burn rate — short against long window",
+      "description": "The pairs the burn-rate alerts fire on: 5m with 1h, 30m with 6h, 2h with 1d. The red line marks the 14.4 fast-burn threshold.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 16, "x": 0, "y": 8},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "never"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 14.4}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "slo:burn_rate:5m",
+          "legendFormat": "5m (fast window)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "B",
+          "expr": "slo:burn_rate:1h",
+          "legendFormat": "1h (fast confirmation)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "C",
+          "expr": "slo:burn_rate:30m",
+          "legendFormat": "30m (medium window)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "D",
+          "expr": "slo:burn_rate:6h",
+          "legendFormat": "6h (medium confirmation)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "E",
+          "expr": "slo:burn_rate:1d",
+          "legendFormat": "1d (slow confirmation)",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Alerts firing right now",
+      "description": "Count of series currently in firing state in Prometheus, all alert rules included.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 8},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(ALERTS{alertstate=\"firing\"})",
+          "legendFormat": "firing",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Availability SLI by probe job",
+      "description": "Probe success per scrape job, so a single broken probe never hides behind the average.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {"lineWidth": 2, "fillOpacity": 0, "showPoints": "auto"}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "lab:probe:success_rate5m{job=~\"$blackbox_job\"} * 100",
+          "legendFormat": "{{job}}",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latency SLI — requests served under 300 ms",
+      "description": "Share of application requests inside the latency objective. The /api/error fault-injection endpoint is excluded by the recording rules.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 17},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 80,
+          "max": 100,
+          "custom": {"lineWidth": 2, "fillOpacity": 5, "showPoints": "auto"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 99}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "slo:latency:ratio_rate5m * 100",
+          "legendFormat": "5m",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "B",
+          "expr": "slo:latency:ratio_rate1h * 100",
+          "legendFormat": "1h",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "C",
+          "expr": "slo:latency:ratio_rate6h * 100",
+          "legendFormat": "6h",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        },
+        {
+          "refId": "D",
+          "expr": "slo:latency:ratio_rate1d * 100",
+          "legendFormat": "1d",
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Burn rate by window",
+      "description": "Every burn-rate window side by side: the table the on-call reads to decide if this is a page or a ticket.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 26},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "decimals": 2, "custom": {"align": "auto"}},
+        "overrides": []
+      },
+      "options": {"showHeader": true, "sortBy": [{"displayName": "Value", "desc": true}]},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{__name__=~\"slo:burn_rate:(5m|30m|1h|2h|6h|1d|3d)\"}",
+          "legendFormat": "{{__name__}}",
+          "instant": true,
+          "datasource": {"type": "prometheus", "uid": "prometheus"}
+        }
+      ]
+    }
+  ]
+}

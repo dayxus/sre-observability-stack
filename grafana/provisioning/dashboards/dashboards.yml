@@ -1,0 +1,18 @@
+# Dashboard provider: Grafana reads the JSON files mounted from grafana/dashboards/ and
+# refuses UI edits, so the repository stays the only source of truth. The smoke test asks
+# this provider's API for the provisioned dashboards after `docker compose up --wait`.
+
+apiVersion: 1
+
+providers:
+  - name: sre-lab
+    orgId: 1
+    folder: SRE
+    folderUid: sre-lab
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,119 @@
+# Scrape configuration for the lab stack.
+#
+# Targets are the services declared in docker-compose.yml (service names resolve through
+# the compose network) plus the synthetic target that the repository probes over HTTP,
+# TCP, ICMP and TLS. Rule files are loaded from the mounted rules directory.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    environment: lab
+    stack: sre-observability-stack
+
+rule_files:
+  - rules/recording.rules.yml
+  - rules/slo-burnrate.rules.yml
+  - rules/host.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  # --- the stack monitoring itself ---------------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets: ["blackbox-exporter:9115"]
+
+  # --- host metrics ------------------------------------------------------------------
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # --- the synthetic workload --------------------------------------------------------
+  # Application metrics (request rate, latency histogram, error codes) come from the
+  # synthetic target itself, over plain HTTP on the internal network.
+  - job_name: synthetic-target
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["synthetic-target:8080"]
+
+  # --- blackbox probes ---------------------------------------------------------------
+  # Each job below probes the same target with a different module; probe_success is the
+  # raw material of the availability SLO and probe_ssl_earliest_cert_expiry of the
+  # certificate-expiry alert.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://synthetic-target:8080/healthz
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - synthetic-target:8443
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-icmp
+    metrics_path: /probe
+    params:
+      module: [icmp_ping]
+    static_configs:
+      - targets:
+          - synthetic-target
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-ssl
+    metrics_path: /probe
+    params:
+      module: [ssl_expiry]
+    static_configs:
+      - targets:
+          - https://synthetic-target:8443/healthz
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

@@ -1,0 +1,105 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: install tooling
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+  validate:
+    name: validate (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        # The repository's own code runs on the oldest supported python (3.9, the version
+        # available on the machine it was built on) and on the current one.
+        python-version: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: install test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: validate with the official tooling (promtool, amtool, loki, promtail) and run the tests
+        run: PYTHON=python3 ./scripts/validate.sh
+
+  smoke:
+    name: smoke (stack up, targets up, dashboards provisioned)
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: configure .env with a per-run Grafana password
+        run: |
+          cp .env.example .env
+          sed -i "s|^GF_ADMIN_PASSWORD=.*|GF_ADMIN_PASSWORD=$(openssl rand -hex 16)|" .env
+          grep -c '^GF_ADMIN_PASSWORD=' .env
+
+      - name: start the stack and wait for the healthchecks
+        run: ./scripts/up.sh
+
+      - name: smoke test
+        run: ./scripts/smoke.sh
+
+      - name: stack status and logs (only on failure)
+        if: failure()
+        run: |
+          bash -c '. ./scripts/lib/env.sh && docker compose ps -a'
+          bash -c '. ./scripts/lib/env.sh && docker compose logs --no-color --tail=300'
+
+      - name: upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-evidence
+          path: runtime/smoke/
+          if-no-files-found: ignore
+
+      - name: tear the stack down
+        if: always()
+        run: bash -c '. ./scripts/lib/env.sh && docker compose down -v --remove-orphans'

@@ -1,0 +1,29 @@
+# local runtime state
+.env
+runtime/
+.audit/
+
+# downloaded official tooling (promtool, amtool, loki, promtail binaries)
+.tools/
+*.tar.gz
+*.zip
+
+# generated lab material
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# logs
+*.log
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/

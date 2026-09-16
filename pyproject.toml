@@ -1,0 +1,22 @@
+# Tooling configuration for the repository's python code (tests, scripts, synthetic target).
+# There is no package to build: the code is run by the scripts and by the containers.
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+extend-exclude = [".venv", ".tools", "runtime", ".audit"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "RET", "SIM", "PTH"]
+ignore = [
+    # The lab scripts print to stdout on purpose: their output is the evidence.
+    "T201",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert on purpose and use long fixture-driven expressions.
+"tests/*" = ["E501", "SIM117"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

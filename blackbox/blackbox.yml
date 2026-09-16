@@ -1,0 +1,45 @@
+# Blackbox exporter modules.
+#
+# Every module probes the same synthetic target through a different layer, which is what
+# makes the probe results comparable: http_2xx answers "is the endpoint serving healthy
+# traffic", tcp_connect "is anything listening", icmp_ping "is the network path alive" and
+# ssl_expiry "is the certificate chain about to break". The Prometheus scrape jobs in
+# prometheus/prometheus.yml pick these modules by name.
+
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+
+  icmp_ping:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+      payload_size: 32
+
+  # TLS certificate chain inspection. The lab certificate is self-signed and generated at
+  # runtime by scripts/gen-certs.sh, so verification is skipped on purpose: what matters
+  # here is probe_ssl_earliest_cert_expiry, which drives the expiry alerts.
+  ssl_expiry:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200]
+      tls_config:
+        insecure_skip_verify: true

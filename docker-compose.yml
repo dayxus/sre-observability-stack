@@ -1,0 +1,270 @@
+# Observability stack as code.
+#
+# Everything that matters is a file in this repository: scrape configs, alert rules,
+# dashboards, datasource provisioning and alert routing. Nothing is created by hand in a
+# UI, so a fresh clone reproduces the whole lab with one command.
+#
+#   scripts/up.sh     generates the lab TLS material, copies .env if needed, runs
+#                     `docker compose up -d --wait` and prints the endpoints
+#   scripts/smoke.sh  asserts every target is UP, every dashboard is provisioned and the
+#                     alert pipeline actually delivers a notification
+#
+# Image tags come from versions.env (no ":latest"), runtime knobs from .env
+# (see .env.example). scripts/lib/env.sh exports both before any compose call.
+
+name: sre-observability-stack
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 15s
+  timeout: 5s
+  retries: 6
+  start_period: 20s
+
+services:
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+      - --log.level=info
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/-/healthy"]
+    restart: unless-stopped
+    depends_on:
+      alertmanager:
+        condition: service_healthy
+      blackbox-exporter:
+        condition: service_healthy
+      node-exporter:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      synthetic-target:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    networks: [observability]
+
+  alertmanager:
+    image: prom/alertmanager:${ALERTMANAGER_VERSION}
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+      - --log.level=info
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT}:9093"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9093/-/ready"]
+    restart: unless-stopped
+    depends_on:
+      synthetic-target:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [observability]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION}
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+      - --log.level=info
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    ports:
+      - "${BLACKBOX_EXPORTER_PORT}:9115"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9115/-/healthy"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [observability]
+
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION}
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/rootfs/(sys|proc|dev|etc|run|boot|var/lib/docker)(/|$$)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$$
+      - --collector.netdev.device-exclude=^(veth.*|docker.*|br-.*|virbr.*)$$
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "${NODE_EXPORTER_PORT}:9100"
+    healthcheck:
+      <<: *healthcheck-defaults
+      # node_exporter has no /-/healthy endpoint; a 200 from /metrics proves the
+      # collectors are wired and the process is serving.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9100/metrics"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [observability]
+
+  loki:
+    image: grafana/loki:${LOKI_VERSION}
+    command:
+      - -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "${LOKI_PORT}:3100"
+    healthcheck:
+      <<: *healthcheck-defaults
+      # The Loki image is distroless (no shell, no wget/curl), so the healthcheck uses
+      # the binary's own readiness command against the /ready endpoint.
+      test: ["CMD", "/usr/bin/loki", "-health", "-health.url=http://127.0.0.1:3100/ready"]
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    networks: [observability]
+
+  promtail:
+    image: grafana/promtail:${PROMTAIL_VERSION}
+    command:
+      - -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail-positions:/var/lib/promtail
+      - lab-logs:/var/log/lab:ro
+    ports:
+      - "${PROMTAIL_PORT}:9080"
+    healthcheck:
+      <<: *healthcheck-defaults
+      # promtail validates its own mounted config: a syntax error in the shipped file
+      # makes the container unhealthy instead of silently shipping nothing.
+      test: ["CMD", "/usr/bin/promtail", "-check-syntax", "-config.file=/etc/promtail/promtail-config.yml"]
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+    networks: [observability]
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_LOG_LEVEL: warn
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT}/
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/slo-overview.json
+    volumes:
+      # One read-only mount for the whole provisioning tree: datasources and the dashboard
+      # provider are shipped by the repository, never created through the Grafana UI.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health"]
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+    networks: [observability]
+
+  # Target of the blackbox probes and of the alert webhook. It is part of the lab on
+  # purpose: the repository probes its own synthetic workload, so the dashboards, the SLO
+  # and the alert pipeline can be exercised end to end without an external dependency.
+  synthetic-target:
+    image: python:${PYTHON_VERSION}
+    command: ["python3", "/app/target_server.py"]
+    environment:
+      TARGET_HTTP_PORT: "8080"
+      TARGET_HTTPS_PORT: "8443"
+      TARGET_TLS_CERT: /certs/tls.crt
+      TARGET_TLS_KEY: /certs/tls.key
+      TARGET_LOG_FILE: /var/log/lab/synthetic-target.log
+      SELF_TRAFFIC_ENABLED: ${SELF_TRAFFIC_ENABLED}
+      SELF_TRAFFIC_INTERVAL_SECONDS: ${SELF_TRAFFIC_INTERVAL_SECONDS}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./synthetic/target/target_server.py:/app/target_server.py:ro
+      - ./runtime/tls:/certs:ro
+      - lab-logs:/var/log/lab
+    ports:
+      - "${SYNTHETIC_TARGET_HTTP_PORT}:8080"
+      - "${SYNTHETIC_TARGET_HTTPS_PORT}:8443"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status == 200 else 1)"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks: [observability]
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
+  loki-data:
+  promtail-positions:
+  lab-logs:

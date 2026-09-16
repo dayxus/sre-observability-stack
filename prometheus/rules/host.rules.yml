@@ -1,0 +1,146 @@
+# Host, certificate and stack-health alerts.
+#
+# These are the alerts that are boring until they are not: the node runs out of disk, a
+# certificate quietly expires, a container restarts in a loop, or the monitoring pipeline
+# itself stops reporting. Every one of them carries a runbook_url.
+#
+# Alert timers are deliberately longer than the CI smoke run (10-15 minutes), so a healthy
+# stack never pages during a test run.
+
+groups:
+  - name: host
+    interval: 30s
+    rules:
+      - alert: HostHighCpuSaturation
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU above 85% for 10 minutes on {{ $labels.instance }}"
+          description: >-
+            Sustained CPU saturation on the node. Correlate with the request rate on the
+            golden-signals dashboard before adding capacity.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/kubernetes/node-notready.md
+
+      - alert: HostHighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory above 90% for 10 minutes on {{ $labels.instance }}"
+          description: >-
+            Less than 10% of memory is reclaimable. Memory pressure is the first cause of
+            OOM kills and of long tail latency.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/kubernetes/oomkilled.md
+
+      - alert: HostDiskSpaceLow
+        expr: >-
+          (1 - node_filesystem_avail_bytes{mountpoint="/rootfs", fstype!~"tmpfs|overlay|squashfs|ramfs"}
+          / node_filesystem_size_bytes{mountpoint="/rootfs", fstype!~"tmpfs|overlay|squashfs|ramfs"}) * 100 > 85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root filesystem above 85% on {{ $labels.instance }}"
+          description: >-
+            Prometheus TSDB, Loki chunks and Docker layers all grow on the same volume.
+            Give the node room before it becomes the outage.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/README.md
+
+      - alert: ContainerRestartLoop
+        # Container restarts, measured without cAdvisor: every component in the stack
+        # exports process_start_time_seconds, so a change means the process restarted.
+        expr: changes(process_start_time_seconds{job=~"prometheus|alertmanager|loki|blackbox-exporter|node-exporter|synthetic-target"}[15m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "{{ $labels.job }} restarted more than twice in 15 minutes"
+          description: >-
+            The process start time keeps moving: the container is in a restart loop. Read
+            the container logs before touching the configuration.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/kubernetes/crashloopbackoff.md
+
+      - alert: CertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox-ssl"} - time() < 7 * 24 * 3600
+        for: 15m
+        labels:
+          severity: warning
+          service: synthetic-target
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in less than 7 days"
+          description: >-
+            The blackbox ssl probe reads the earliest expiry date on the chain. Renew and
+            reload the certificate, then confirm the alert clears.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/network/tls-cert-expiry.md
+
+      - alert: CertificateExpiryWithin30Days
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox-ssl"} - time() < 30 * 24 * 3600
+        for: 1h
+        labels:
+          severity: info
+          service: synthetic-target
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires within 30 days"
+          description: >-
+            Early warning so the renewal never turns into CertificateExpiringSoon.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/network/tls-cert-expiry.md
+
+  - name: stack-health
+    interval: 30s
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 3m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "{{ $labels.job }} is down ({{ $labels.instance }})"
+          description: >-
+            A scrape target has been unreachable for three minutes. No metrics means
+            every dashboard and every SLO ratio on that target is stale.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/missing-metrics.md
+
+      - alert: ProbeFailing
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: synthetic-target
+        annotations:
+          summary: "Blackbox probe {{ $labels.job }} is failing for {{ $labels.instance }}"
+          description: >-
+            The probe itself fails: the endpoint is not answering, or it answers with a
+            status outside the module's valid codes. This is the signal that feeds the
+            availability SLO.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/silent-failure.md
+
+      - alert: PrometheusRuleEvaluationFailures
+        expr: rate(prometheus_rule_evaluation_failures_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: critical
+          service: prometheus
+        annotations:
+          summary: "Prometheus is failing to evaluate rules"
+          description: >-
+            A rule expression is broken or a recording rule target is invalid. Alerts
+            derived from it are silently not firing.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/missing-metrics.md
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: rate(alertmanager_notifications_failed_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager cannot deliver notifications"
+          description: >-
+            The webhook receiver is refusing or timing out. Alerts are being evaluated but
+            nobody is being told, which is the failure mode this stack exists to catch.
+          runbook_url: https://github.com/dayxus/sre-runbooks-postmortem/blob/main/runbooks/observability/alert-fatigue.md

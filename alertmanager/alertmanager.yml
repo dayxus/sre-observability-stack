@@ -1,0 +1,66 @@
+# Alert routing as code.
+#
+# There is no pager in this lab, so the route tree ends in the synthetic target's webhook
+# sink: every notification is delivered to a real HTTP receiver and the smoke test asserts
+# end to end that an alert posted through the API arrives there. Swapping in a real
+# pagerduty_configs or slack_configs receiver is a receiver change, not a rewrite.
+#
+# Route tree by severity:
+#   severity=critical  -> lab-webhook, 1s group wait, 30m repeat   (page someone)
+#   severity=warning   -> lab-webhook, 10s group wait, 12h repeat  (ticket, business hours)
+#   severity=info|debug-> blackhole                                (dashboard only)
+#   anything else      -> lab-webhook                              (never silently dropped)
+
+global:
+  resolve_timeout: 5m
+  http_config:
+    follow_redirects: true
+
+route:
+  receiver: lab-webhook
+  group_by: [alertname, severity, service]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: lab-webhook
+      group_wait: 1s
+      group_interval: 30s
+      repeat_interval: 30m
+    - matchers:
+        - severity="warning"
+      receiver: lab-webhook
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+    - matchers:
+        - severity=~"info|debug"
+      receiver: blackhole
+      group_wait: 30s
+      group_interval: 15m
+      repeat_interval: 24h
+
+receivers:
+  - name: lab-webhook
+    webhook_configs:
+      - url: http://synthetic-target:8080/alerts
+        send_resolved: true
+        max_alerts: 20
+  # Terminal receiver for informational alerts: accepted, grouped, then dropped.
+  - name: blackhole
+
+inhibit_rules:
+  # A critical for a service mutes its warnings: one incident, one page.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity=~"warning|info"
+    equal: [alertname, service]
+  # If the scrape target is down, do not also page for every derived SLO alert.
+  - source_matchers:
+      - alertname="TargetDown"
+    target_matchers:
+      - severity=~"warning|info"
+    equal: [service]
