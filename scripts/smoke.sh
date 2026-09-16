@@ -6,6 +6,8 @@
 # It checks, in order:
 #   1. every health endpoint answers (prometheus, alertmanager, grafana, loki, promtail,
 #      blackbox exporter, node exporter, synthetic target)
+#   1b. the warm-up: every Prometheus target is UP, all four probe modules report and the
+#      SLO recording rules have values, before anything else is asserted
 #   2. every Prometheus scrape target is UP, and the blackbox probes all succeed
 #   3. the SLO recording rules are evaluated and no rule evaluation is failing
 #   4. an alert posted through the Alertmanager API reaches the webhook sink
@@ -81,6 +83,46 @@ query_prometheus() {
     -o "$2"
 }
 
+# wait_until <description> <timeout-seconds> <predicate...> - retries a predicate until it
+# holds. `docker compose up --wait` returns as soon as the containers are healthy, which is
+# before Prometheus has scraped anything or evaluated a single rule, so the smoke test
+# waits for the first cycles instead of asserting on an empty database.
+wait_until() {
+  local description="$1" timeout="$2"
+  shift 2
+  local waited=0
+  while [ "${waited}" -lt "${timeout}" ]; do
+    if "$@" >/dev/null 2>&1; then
+      pass "${description} (after ${waited}s)"
+      return 0
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+  fail "${description} (still not true after ${timeout}s)"
+  return 1
+}
+
+fetch_targets() {
+  curl -fsS "${PROM}/api/v1/targets" -o "${EVIDENCE_DIR}/prometheus-targets.json"
+}
+
+all_targets_are_up() {
+  fetch_targets &&
+    jq -e '.data.activeTargets | (length > 0) and (map(select(.health != "up")) | length == 0)' \
+      "${EVIDENCE_DIR}/prometheus-targets.json" >/dev/null
+}
+
+every_probe_module_reports() {
+  query_prometheus "count by (job) (probe_success)" "${EVIDENCE_DIR}/probe-modules.json" &&
+    jq -e '.data.result | length >= 4' "${EVIDENCE_DIR}/probe-modules.json" >/dev/null
+}
+
+slo_rules_are_evaluated() {
+  query_prometheus "slo:availability:ratio_rate5m" "${EVIDENCE_DIR}/slo-warmup.json" &&
+    jq -e '.data.result | length > 0' "${EVIDENCE_DIR}/slo-warmup.json" >/dev/null
+}
+
 printf 'sre-observability-stack smoke test\n'
 printf 'evidence directory: %s\n' "${EVIDENCE_DIR}"
 
@@ -103,11 +145,20 @@ else
   fail "grafana reports version ${GRAFANA_VERSION_REPORTED}, versions.env pins ${GRAFANA_VERSION}"
 fi
 
-if curl -fsS "${NODE_EXPORTER}/metrics" | grep -q '^node_cpu_seconds_total'; then
-  pass "node exporter is collecting host CPU metrics"
+# grep -c reads the whole response instead of exiting on the first match: an early exit
+# closes the pipe and makes curl fail with "Failure writing output to destination".
+NODE_CPU_SAMPLES="$(curl -fsS "${NODE_EXPORTER}/metrics" | grep -c '^node_cpu_seconds_total' || true)"
+if [ "${NODE_CPU_SAMPLES:-0}" -gt 0 ]; then
+  pass "node exporter is collecting host CPU metrics (${NODE_CPU_SAMPLES} samples)"
 else
   fail "node exporter answered but exposes no node_cpu_seconds_total"
 fi
+
+step "1b. warm-up: wait for the first scrape cycle and rule evaluation"
+SMOKE_WARMUP_TIMEOUT="${SMOKE_WARMUP_TIMEOUT:-240}"
+wait_until "every prometheus scrape target is up" "${SMOKE_WARMUP_TIMEOUT}" all_targets_are_up
+wait_until "all four probe modules report a result" "${SMOKE_WARMUP_TIMEOUT}" every_probe_module_reports
+wait_until "the SLO recording rules have values" "${SMOKE_WARMUP_TIMEOUT}" slo_rules_are_evaluated
 
 step "2. prometheus targets and blackbox probes"
 if curl -fsS "${PROM}/api/v1/targets" -o "${EVIDENCE_DIR}/prometheus-targets.json"; then
