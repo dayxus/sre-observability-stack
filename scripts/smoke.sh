@@ -118,9 +118,14 @@ every_probe_module_reports() {
     jq -e '.data.result | length >= 4' "${EVIDENCE_DIR}/probe-modules.json" >/dev/null
 }
 
+# The three SLO series the smoke test asserts on later: the availability ratio, the burn
+# rate derived from it and the latency ratio computed from the target's own histogram.
+SLO_WARMUP_SERIES='{__name__=~"slo:availability:ratio_rate5m|slo:burn_rate:5m|slo:latency:ratio_rate5m"}'
+
 slo_rules_are_evaluated() {
-  query_prometheus "slo:availability:ratio_rate5m" "${EVIDENCE_DIR}/slo-warmup.json" &&
-    jq -e '.data.result | length > 0' "${EVIDENCE_DIR}/slo-warmup.json" >/dev/null
+  query_prometheus "${SLO_WARMUP_SERIES}" "${EVIDENCE_DIR}/slo-warmup.json" &&
+    jq -e '[.data.result[] | select(.value[1] != null) | .metric.__name__] | unique | length >= 3' \
+      "${EVIDENCE_DIR}/slo-warmup.json" >/dev/null
 }
 
 printf 'sre-observability-stack smoke test\n'
