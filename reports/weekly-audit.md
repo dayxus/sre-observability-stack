@@ -1,23 +1,26 @@
 # Weekly audit
 
-_Generated: 2026-09-16 01:23 UTC_
+_Generated: 2026-09-21 12:03 UTC_
 
 ## Pinned components
 
 | Component | Pinned | Latest stable | Drift |
 | --- | --- | --- | --- |
 | Prometheus | `v3.14.0` | `v3.14.0` | up_to_date |
-| Alertmanager | `v0.34.0` | `v0.34.0` | up_to_date |
+| Alertmanager | `v0.34.0` | `v0.34.1` | patch |
 | Blackbox exporter | `v0.28.0` | `v0.28.0` | up_to_date |
 | Node exporter | `v1.12.1` | `v1.12.1` | up_to_date |
 | Grafana | `13.2.2` | `v13.2.2` | up_to_date |
-| Loki | `3.7.7` | `v3.7.7` | up_to_date |
+| Loki | `3.7.7` | `v3.7.8` | patch |
 | Promtail | `3.6.11` | `3.6.11` | up_to_date |
 | Python (synthetic target image) | `3.13.15-slim` | `3.13.15-slim` | up_to_date |
 
 ## Drift
 
-No drift: every pinned version is the current stable release upstream.
+- **Alertmanager**: pinned `v0.34.0`, upstream `v0.34.1` (patch drift) — https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md
+- **Loki**: pinned `3.7.7`, upstream `v3.7.8` (patch drift) — https://github.com/grafana/loki/blob/main/CHANGELOG.md
+
+Patch and minor drift is applied by editing `versions.env` and letting CI run `scripts/validate.sh` plus the smoke job. A major drift is opened as an issue instead.
 
 ## What is configured
 
