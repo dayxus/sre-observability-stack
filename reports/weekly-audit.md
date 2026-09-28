@@ -1,12 +1,12 @@
 # Weekly audit
 
-_Generated: 2026-09-21 12:42 UTC_
+_Generated: 2026-09-28 13:47 UTC_
 
 ## Pinned components
 
 | Component | Pinned | Latest stable | Drift |
 | --- | --- | --- | --- |
-| Prometheus | `v3.14.0` | `v3.14.0` | up_to_date |
+| Prometheus | `v3.14.0` | `v3.15.0` | minor |
 | Alertmanager | `v0.34.0` | `v0.34.1` | patch |
 | Blackbox exporter | `v0.28.0` | `v0.28.0` | up_to_date |
 | Node exporter | `v1.12.1` | `v1.12.1` | up_to_date |
@@ -17,6 +17,7 @@ _Generated: 2026-09-21 12:42 UTC_
 
 ## Drift
 
+- **Prometheus**: pinned `v3.14.0`, upstream `v3.15.0` (minor drift) — https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md
 - **Alertmanager**: pinned `v0.34.0`, upstream `v0.34.1` (patch drift) — https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md
 - **Loki**: pinned `3.7.7`, upstream `v3.7.8` (patch drift) — https://github.com/grafana/loki/blob/main/CHANGELOG.md
 

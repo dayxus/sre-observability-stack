@@ -4,11 +4,11 @@ Pinned in [`versions.env`](../versions.env) — the single source of truth for e
 stack runs. This table is regenerated weekly by `.github/workflows/maintenance.yml`, which
 queries the upstream release APIs; it is not edited by hand.
 
-_Last checked: 2026-09-21 12:42 UTC_
+_Last checked: 2026-09-28 13:47 UTC_
 
 | Component | Pinned | Latest stable upstream | Status | Image | Changelog |
 | --- | --- | --- | --- | --- | --- |
-| Prometheus | `v3.14.0` | `v3.14.0` | up to date | `prom/prometheus:v3.14.0` | [changelog](https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md) |
+| Prometheus | `v3.14.0` | `v3.15.0` | minor behind | `prom/prometheus:v3.14.0` | [changelog](https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md) |
 | Alertmanager | `v0.34.0` | `v0.34.1` | patch behind | `prom/alertmanager:v0.34.0` | [changelog](https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md) |
 | Blackbox exporter | `v0.28.0` | `v0.28.0` | up to date | `prom/blackbox-exporter:v0.28.0` | [changelog](https://github.com/prometheus/blackbox_exporter/blob/master/CHANGELOG.md) |
 | Node exporter | `v1.12.1` | `v1.12.1` | up to date | `prom/node-exporter:v1.12.1` | [changelog](https://github.com/prometheus/node_exporter/blob/master/CHANGELOG.md) |
