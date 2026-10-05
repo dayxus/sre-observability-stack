@@ -1,6 +1,6 @@
 # Weekly audit
 
-_Generated: 2026-09-28 13:47 UTC_
+_Generated: 2026-10-05 14:29 UTC_
 
 ## Pinned components
 
@@ -10,16 +10,18 @@ _Generated: 2026-09-28 13:47 UTC_
 | Alertmanager | `v0.34.0` | `v0.34.1` | patch |
 | Blackbox exporter | `v0.28.0` | `v0.28.0` | up_to_date |
 | Node exporter | `v1.12.1` | `v1.12.1` | up_to_date |
-| Grafana | `13.2.2` | `v13.2.2` | up_to_date |
+| Grafana | `13.2.2` | `v13.2.3` | patch |
 | Loki | `3.7.7` | `v3.7.8` | patch |
 | Promtail | `3.6.11` | `3.6.11` | up_to_date |
-| Python (synthetic target image) | `3.13.15-slim` | `3.13.15-slim` | up_to_date |
+| Python (synthetic target image) | `3.13.15-slim` | `3.13.16-slim` | patch |
 
 ## Drift
 
 - **Prometheus**: pinned `v3.14.0`, upstream `v3.15.0` (minor drift) — https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md
 - **Alertmanager**: pinned `v0.34.0`, upstream `v0.34.1` (patch drift) — https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md
+- **Grafana**: pinned `13.2.2`, upstream `v13.2.3` (patch drift) — https://github.com/grafana/grafana/blob/main/CHANGELOG.md
 - **Loki**: pinned `3.7.7`, upstream `v3.7.8` (patch drift) — https://github.com/grafana/loki/blob/main/CHANGELOG.md
+- **Python (synthetic target image)**: pinned `3.13.15-slim`, upstream `3.13.16-slim` (patch drift) — https://www.python.org/downloads/
 
 Patch and minor drift is applied by editing `versions.env` and letting CI run `scripts/validate.sh` plus the smoke job. A major drift is opened as an issue instead.
 
