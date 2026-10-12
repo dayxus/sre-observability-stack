@@ -154,11 +154,11 @@ Valid config file! No syntax issues found
 validation finished: promtool, amtool, loki, promtail and pytest all green
 ```
 
-The second half of the evidence is the CI smoke job, which runs against the real stack on an Ubuntu runner. See [`docs/smoke-evidence.md`](docs/smoke-evidence.md) for the literal output of the last run (targets `up`, dashboards provisioned, alert delivered, logs shipped) and for the uploaded `smoke-evidence` artifact.
+The second half of the evidence is the CI `smoke` job, which runs against the real stack on an Ubuntu runner. Its literal output (targets `up`, dashboards provisioned, alert delivered, logs shipped) is the `smoke-evidence` artifact that the [`ci` workflow](https://github.com/dayxus/sre-observability-stack/actions/workflows/ci.yml) uploads on every run, kept with the run for the artifact retention window.
 
 ## Automated maintenance
 
-`.github/workflows/maintenance.yml` runs every Monday at 06:00 UTC (and on demand):
+`.github/workflows/maintenance.yml` runs every Monday at 06:17 UTC (and on demand):
 
 1. Queries the upstream release APIs (GitHub Releases for Prometheus, Alertmanager, Loki, Grafana; the registry tag lists for the rest) and compares every component with `versions.env`.
 2. Rewrites `docs/versions.md` and `reports/weekly-audit.md` and commits only when the diff is real (`git diff --quiet && exit 0`).
