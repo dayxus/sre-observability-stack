@@ -1,12 +1,12 @@
 # Weekly audit
 
-_Generated: 2026-11-02 15:41 UTC_
+_Generated: 2026-11-09 16:08 UTC_
 
 ## Pinned components
 
 | Component | Pinned | Latest stable | Drift |
 | --- | --- | --- | --- |
-| Prometheus | `v3.14.0` | `v3.15.1` | minor |
+| Prometheus | `v3.14.0` | `v3.16.0` | minor |
 | Alertmanager | `v0.34.0` | `v0.34.2` | patch |
 | Blackbox exporter | `v0.28.0` | `v0.29.1` | minor |
 | Node exporter | `v1.12.1` | `v1.12.1` | up_to_date |
@@ -17,7 +17,7 @@ _Generated: 2026-11-02 15:41 UTC_
 
 ## Drift
 
-- **Prometheus**: pinned `v3.14.0`, upstream `v3.15.1` (minor drift) — https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md
+- **Prometheus**: pinned `v3.14.0`, upstream `v3.16.0` (minor drift) — https://github.com/prometheus/prometheus/blob/main/CHANGELOG.md
 - **Alertmanager**: pinned `v0.34.0`, upstream `v0.34.2` (patch drift) — https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md
 - **Blackbox exporter**: pinned `v0.28.0`, upstream `v0.29.1` (minor drift) — https://github.com/prometheus/blackbox_exporter/blob/master/CHANGELOG.md
 - **Grafana**: pinned `13.2.2`, upstream `v13.3.0` (minor drift) — https://github.com/grafana/grafana/blob/main/CHANGELOG.md
